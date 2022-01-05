@@ -1,8 +1,12 @@
 import pybullet as p
 import pybullet_data
 import numpy as np
+import time
 
+""" view_pose(), clear() functions are bullet utility function for debugging purpose.
+"""
 def view_pose(client, T):
+    
     length = 0.1
     xaxis = np.array([length, 0, 0, 1])
     yaxis = np.array([0, length, 0, 1])
@@ -23,7 +27,7 @@ def clear(client):
     for i in range(100):
         client.removeUserDebugItem(i)
 
-class Panda:
+class PandaBullet:
     def __init__(self, client):
         """ Init panda class
         """
@@ -47,15 +51,19 @@ class Panda:
         self._all_joints = range(self.client.getNumJoints(self.robot))
         self._arm_joints = [i for i in range(7)]
         self._finger_joints = [9,10]
-        self._joint_info = self.get_joint_info()
-        self._movable_joints = self._arm_joints + self._finger_joints
         
+        self._movable_joints = self._arm_joints + self._finger_joints
+        self._ee_idx = 11
+        self._joint_info = self.get_joint_info()
+
+    """ Configuration
+    """
     def get_joint_attribute_names(self):
         return ["joint_index","joint_name","joint_type",
-             "q_index", "u_index", "flags", 
-             "joint_damping", "joint_friction","joint_lower_limit",
-             "joint_upper_limit","joint_max_force","joint_max_velocity",
-             "link_name","joint_axis","parent_frame_pos","parent_frame_orn","parent_index"]
+                "q_index", "u_index", "flags", 
+                "joint_damping", "joint_friction","joint_lower_limit",
+                "joint_upper_limit","joint_max_force","joint_max_velocity",
+                "link_name","joint_axis","parent_frame_pos","parent_frame_orn","parent_index"]
 
     def get_joint_info(self):
         result = {}
@@ -65,22 +73,85 @@ class Panda:
             result[i] = {name:value for name, value in zip(attribute_names, values)}
         return result
 
-    def get_states(self):
+    def set_joint_positions(self, joint_positions):
+        """ hard set of joint position (not control)
+        """
+        assert len(joint_positions) == 7
+        for joint_idx, joint_value in enumerate(joint_positions):
+            self.client.resetJointState(self.robot, joint_idx, joint_value, targetVelocity=0)
+
+    """ Low-level controller
+    """
+    def set_control_mode(self, mode_str="position"):
+        n = len(self._arm_joints)
+        if mode_str == "position":
+            joint_positions = self.get_arm_states()["position"]
+            positionGains = np.ones(n) * 0.01
+            self.client.setJointMotorControlArray(self.robot, self._arm_joints, self.client.POSITION_CONTROL,
+                                                  targetPositions=joint_positions, positionGains=positionGains)
+        else: #velocity or torque
+            for joint in self._movable_joints:
+                self.client.setJointMotorControl2(self.robot, joint, self.client.VELOCITY_CONTROL,
+                                                  targetVelocity=0, force=0)
+
+    def control_joint_positions(self, joint_positions, joint_indexes=None):
+        if joint_indexes is None:
+            joint_indexes = self._arm_joints
+            assert len(joint_indexes) == len(joint_positions)
+        
+        positionGains = np.ones(7) * 0.01
+        self.client.setJointMotorControlArray(self.robot, joint_indexes, controlMode=self.client.POSITION_CONTROL,
+                                              targetPositions=joint_positions, positionGains=positionGains)
+                                    
+    def control_joint_torques(self, joint_torques, joint_indexes=None):
+        if joint_indexes is None:
+            joint_indexes = self._arm_joints
+            assert len(joint_indexes) == len(joint_torques)
+        joint_torques = list(joint_torques)
+        self.client.setJointMotorControlArray(self.robot, joint_indexes, controlMode=self.client.TORQUE_CONTROL,
+                                              forces=joint_torques)
+
+    """ Robot states
+    """
+    def get_states(self, target="arm"):
+        if target == "arm":
+            joint_indexes = self._arm_joints
+        elif target == "finger":
+            joint_indexes = self._finger_joints
+        else: #all movable joints(arm+finger)
+            joint_indexes = self._movable_joints
         result = {}
         state_names = ["position", "velocity", "wrench", "effort"]
-        joint_states = self.client.getJointStates(self.robot, self._movable_joints)
+        joint_states = self.client.getJointStates(self.robot, joint_indexes)
         for i, name in enumerate(state_names):
             result[name] = [states[i] for states in joint_states]
         return result
+
+    def get_arm_states(self):
+        return self.get_states(target="arm")
     
+    def get_finger_states(self):
+        return self.get_states(target="finger")
+
+    def get_all_states(self):
+        return self.get_states(target="movable")
+    
+    """ Robot Kinematics
+    """
     def get_link_pose(self, link_index):
         result = self.client.getLinkState(self.robot, link_index)
         pos, ori = np.array(result[0]), np.array(result[1])
         R = np.array(self.client.getMatrixFromQuaternion(ori)).reshape((3,3))
         return np.block([[R,pos[:,None]],[np.zeros(3),1]])
 
+    def get_ee_pose(self):
+        return self.get_link_pose(self._ee_idx)
+
+    def get_ee_wrench(self):
+        pass
+    
     def get_body_jacobian(self):
-        states = self.get_states()
+        states = self.get_all_states()
         n = len(self._movable_joints)
         trans, rot = self.client.calculateJacobian(bodyUniqueId=self.robot,
                                       linkIndex=11,
@@ -90,26 +161,37 @@ class Panda:
                                       objAccelerations=np.zeros(n).tolist())
         return np.vstack([trans, rot])[:,:-2] #remove finger joint part
 
-#    def inverse_kinematics(self, )
+    def IK(self):
+        pass
+
 
 if __name__ == "__main__":
     uid = p.connect(p.GUI)
     p.setAdditionalSearchPath(pybullet_data.getDataPath()) # for loading plane
     
-    p.resetSimulation()
-    p.setGravity(0, 0, -9.8)
+    # Simulation configuration
+    rate = 240.
+    p.setTimeStep(1/rate)
+    p.resetSimulation() #init
+    p.setGravity(0, 0, -9.8) #set gravity
     
-    # load objects
-    # load plane
-    plane_id = p.loadURDF("plane.urdf")
-    panda = Panda(p)
-    a = panda.get_states()
+    # Load
+    plane_id = p.loadURDF("plane.urdf") # load plane
+    panda = PandaBullet(p) # load robot
     
-    T = panda.get_link_pose(11)
-    jac = panda.get_body_jacobian()
-    print(3)
-    view_pose(p, T)
-    print("hey")
+    time.sleep(3)
+    
+    #T = panda.get_link_pose(11)
+    #jac = panda.get_body_jacobian()
+    #view_pose(p, T)
 
     while(1):
-        pass
+        panda.set_control_mode(mode_str="position")
+        panda.control_joint_positions([0,0,0,0,0,1,1])
+        print(panda.get_body_jacobian())
+        print()
+        #panda.set_control_mode(mode_str="torque")
+        #panda.control_joint_torques([0,0,0,0,0,1,100])
+        
+        p.stepSimulation()
+        time.sleep(1/rate)
