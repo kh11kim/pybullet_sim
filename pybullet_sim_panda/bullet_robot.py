@@ -134,6 +134,9 @@ class PandaBullet:
         return self.get_states(target="finger")
 
     def get_all_states(self):
+        return self.get_states(target="all")
+
+    def get_movable_states(self):
         return self.get_states(target="movable")
     
     """ Robot Kinematics
@@ -144,14 +147,22 @@ class PandaBullet:
         R = np.array(self.client.getMatrixFromQuaternion(ori)).reshape((3,3))
         return np.block([[R,pos[:,None]],[np.zeros(3),1]])
 
+    def get_link_velocity(self, link_index):
+        result = self.client.getLinkState(self.robot, link_index, computeLinkVelocity=True)
+        lin_vel, ang_vel = result[6], result[7]
+        return np.array([*lin_vel, *ang_vel])
+
     def get_ee_pose(self):
         return self.get_link_pose(self._ee_idx)
 
     def get_ee_wrench(self):
         pass
+
+    def get_ee_velocity(self):
+        return self.get_link_velocity(self._ee_idx)
     
     def get_body_jacobian(self):
-        states = self.get_all_states()
+        states = self.get_movable_states()
         n = len(self._movable_joints)
         trans, rot = self.client.calculateJacobian(bodyUniqueId=self.robot,
                                       linkIndex=11,
