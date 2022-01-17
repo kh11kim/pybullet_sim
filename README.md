@@ -3,34 +3,40 @@
 Pybullet simulation environment for Franka Emika Panda
 
 ### Dependency
-pybullet, numpy
+pybullet, numpy, spatial_math_mini
 
-### Simple example (see sim_example.ipynb)
+### Simple example (please check sim_example.ipynb)
 ```python
 uid = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath()) # for loading plane
 
-# Simulation configuration
-rate = 240.
-p.setTimeStep(1/rate)
-p.resetSimulation() #init
-p.setGravity(0, 0, -9.8) #set gravity
-
 # Load
 plane_id = p.loadURDF("plane.urdf") # load plane
-panda = PandaBullet(p) # load robot
+panda = PandaKinematics(p, uid) # load robot
 
-time.sleep(3)
+## kinematics usage
+panda.set_arm_positions([0,0,0,-1,2,1,2])
+states = panda.get_states()
+joints = panda.get_arm_positions()
+panda.set_home_positions()
+panda.open() #gripper
+pos, ori = panda.get_link_pose(3)
 
-while(1):
-    panda.set_control_mode(mode_str="position")
-    panda.control_joint_positions([0,0,0,0,0,1,1])
-    print(panda.get_body_jacobian())
-    print()
-    #panda.set_control_mode(mode_str="torque")
-    #panda.control_joint_torques([0,0,0,0,0,1,100])
+## example(jacobian-pseudoinv)
+panda.set_home_positions()
+pos_curr, _ = panda.get_ee_pose()
+pos_goal = pos_curr + 0.1
 
-    p.stepSimulation()
-    time.sleep(1/rate)
+# show current/goal position
+clear()
+view_point(pos_curr) # show the frame for debugging purpose
+view_point(pos_goal)
 
+# control-like kinematics simulation
+for i in range(10):
+    jac = panda.get_space_jacobian()[3:]
+    q_delta = np.linalg.pinv(jac) @ (pos_goal - pos_curr)
+    q_new = panda.get_arm_positions() + q_delta*0.1
+    panda.set_arm_positions(q_new)
+    time.sleep(0.5)
 ```
