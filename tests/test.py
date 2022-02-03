@@ -13,12 +13,11 @@ class PandaKinematicsTest(unittest.TestCase):
         self.assertEqual(len(states), 4)
 
     def test_set_functions(self):
-        self.panda.set_home_positions()
         self.panda.open()
-        self.panda.set_arm_positions([0,0,0,0,0,0,0])
+        self.panda.set_joints([0,0,0,0,0,0,0])
         
     def test_get_functions(self):
-        joints = self.panda.get_arm_positions()
+        joints = self.panda.get_joints()
         self.assertEqual(len(joints), 7)
         for i in range(7):
             pos, ori = self.panda.get_link_pose(i)
@@ -34,10 +33,10 @@ class PandaKinematicsTest(unittest.TestCase):
         self.assertEqual(jac.shape, (6, 7))
     
     def test_FK_IK(self):
-        curr_joints = self.panda.get_arm_positions()
+        curr_joints = self.panda.get_joints()
         joints = np.random.random(7)
         pos, ori = self.panda.FK(joints)
-        is_same = np.allclose(curr_joints, self.panda.get_arm_positions())
+        is_same = np.allclose(curr_joints, self.panda.get_joints())
         self.assertEqual(is_same, True)
         success, joints = self.panda.IK(pos, ori)
         self.assertEqual(len(joints), 7)

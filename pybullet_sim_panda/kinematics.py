@@ -91,21 +91,21 @@ class PandaKinematics(PandaConfig):
             result[name] = [states[i] for states in joint_states]
         return result
     
-    def set_arm_positions(self, arm_positions):
+    def set_joints(self, joints):
         """directly set joint position (no control)
 
         :param arm_positions [array(7)]: joint positions of arms
         """
-        assert len(arm_positions) == 7
-        for joint_idx, joint_value in enumerate(arm_positions):
+        assert len(joints) == 7
+        for joint_idx, joint_value in enumerate(joints):
             self._client.resetJointState(self._robot, joint_idx, joint_value, targetVelocity=0)
 
     def set_home_positions(self):
         """directly set home position (no control)
         """
-        self.set_arm_positions(self._home_positions)
+        self.set_joints(self._home_positions)
     
-    def get_arm_positions(self):
+    def get_joints(self):
         """get current arm joint positions
 
         :return [np.ndarray(7)]: arm joint positions
@@ -139,7 +139,8 @@ class PandaKinematics(PandaConfig):
         return self.get_link_pose(self._ee_idx)
     
     def get_space_jacobian(self, arm_positions=None):
-        """get the space jacobian of the current or the specific joint positions.
+        """[Something is wrong. This should be revised.]
+        get the space jacobian of the current or the specific joint positions.
 
         :param arm_positions [array-like]: the input joint positions if None, use current joint positions, defaults to None
         :return [np.ndarray(6,7)]: 6x7 space jacobian(rot(3), trans(3) x arm_joint(7))
@@ -160,7 +161,8 @@ class PandaKinematics(PandaConfig):
         return np.vstack([rot, trans])[:,:-2] #remove finger joint part (2)
 
     def get_body_jacobian(self, arm_positions=None):
-        """get the body jacobian of the current or the specific joint positions.
+        """[Something is wrong. This should be revised.]
+        get the body jacobian of the current or the specific joint positions.
 
         :param arm_positions [array-like]: the input joint positions if None, use current joint positions, defaults to None
         :return [np.ndarray(6,7)]: 6x7 space jacobian
@@ -178,10 +180,10 @@ class PandaKinematics(PandaConfig):
         :param arm_positions [array_like]: input joint positions
         :return [np.ndarray(3), np.ndarray(4)]: the FK result (position/orientation)
         """
-        arm_positions_curr = self.get_arm_positions()
-        self.set_arm_positions(arm_positions)
+        arm_positions_curr = self.get_joints()
+        self.set_joints(arm_positions)
         pos, ori = self.get_ee_pose()
-        self.set_arm_positions(arm_positions_curr)
+        self.set_joints(arm_positions_curr)
         return pos, ori
 
     def IK(self, position, orientation=None):
@@ -192,24 +194,24 @@ class PandaKinematics(PandaConfig):
         :return [np.ndarray(7)]: the IK result (joint positions)
         """
         success = False
-        arm_positions_curr = self.get_arm_positions()
+        arm_positions_curr = self.get_joints()
         self.set_home_positions()
         if orientation is None:
             result = self._client.calculateInverseKinematics(self._robot, 11, targetPosition=list(position))
             q = np.array(result)[:-2]
-            self.set_arm_positions(q)
+            self.set_joints(q)
             pos, _ = self.get_ee_pose()
         else:
             result = self._client.calculateInverseKinematics(self._robot, 11, 
                                                              targetPosition=list(position),
                                                              targetOrientation=list(orientation))
             q = np.array(result)[:-2]
-            self.set_arm_positions(q)
+            self.set_joints(q)
             pos, _ = self.get_ee_pose()
         if (np.linalg.norm(pos - position) < self._trans_eps):
                 success = True
         #print(np.linalg.norm(pos - position),np.linalg.norm(ori - orientation) )
-        self.set_arm_positions(arm_positions_curr)
+        self.set_joints(arm_positions_curr)
         return success, q
 
 if __name__ == "__main__":

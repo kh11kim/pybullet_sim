@@ -28,7 +28,7 @@ class PandaCollision(PandaKinematics):
         """
         is_collision = False
         if joint_positions is not None:
-            joint_positions_curr = self.get_arm_positions()
+            joint_positions_curr = self.get_joints()
             self.set_joint_positions(joint_positions)
 
         for link1, link2 in self.get_panda_self_collision_list():
